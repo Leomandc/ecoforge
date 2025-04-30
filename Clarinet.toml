@@ -8,6 +8,10 @@ requirements = []
 path = "contracts/carbon-tracker.clar"
 depends_on = []
 
+[contracts.eco-rewards]
+path = "contracts/eco-rewards.clar"
+depends_on = []
+
 [contracts.user-registry]
 path = "contracts/user-registry.clar"
 depends_on = []
