@@ -69,13 +69,6 @@
   )
 )
 
-(define-read-only (get-user-by-username (username (string-utf8 50)))
-  (match (map-get? username-index { username: username })
-    index (get-user (get index 'user-id))
-    (err ERR-USER-NOT-FOUND)
-  )
-)
-
 (define-read-only (is-registered (user-id principal))
   (ok (check-user-exists user-id))
 )

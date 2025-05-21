@@ -123,31 +123,6 @@
   (default-to u0 (map-get? challenge-progress {user: user, challenge-id: challenge-id}))
 )
 
-;; Calculate reward based on action type and verification level
-(define-private (calculate-reward (action-type uint) (verification-level uint))
-  (let (
-    (base-reward 
-      (cond
-        (is-eq action-type ACTION-PUBLIC-TRANSPORT) ACTION-PUBLIC-TRANSPORT
-        (is-eq action-type ACTION-RENEWABLE-ENERGY) ACTION-RENEWABLE-ENERGY
-        (is-eq action-type ACTION-REDUCE-WASTE) ACTION-REDUCE-WASTE
-        (is-eq action-type ACTION-PLANT-TREE) ACTION-PLANT-TREE
-        (is-eq action-type ACTION-SUSTAINABLE-DIET) ACTION-SUSTAINABLE-DIET
-        true u0
-      ))
-    (multiplier 
-      (cond
-        (is-eq verification-level VERIFICATION-SELF) VERIFICATION-SELF
-        (is-eq verification-level VERIFICATION-COMMUNITY) VERIFICATION-COMMUNITY
-        (is-eq verification-level VERIFICATION-EXPERT) VERIFICATION-EXPERT
-        true VERIFICATION-SELF
-      ))
-  )
-    ;; Calculate reward with multiplier (in basis points)
-    (/ (* base-reward multiplier) u100)
-  )
-)
-
 ;; Add tokens to a user's balance
 (define-private (add-tokens (user principal) (amount uint))
   (let (
@@ -198,27 +173,6 @@
   )
 )
 
-;; Check if user has completed a challenge
-(define-private (check-challenge-completion (user principal) (challenge-id uint))
-  (let (
-    (progress (get-challenge-progress user challenge-id))
-    (challenge (map-get? active-challenges challenge-id))
-  )
-    (if (and 
-          (is-some challenge) 
-          (>= progress (get required-count (unwrap-panic challenge)))
-          (not (default-to false (map-get? completed-challenges {user: user, challenge-id: challenge-id})))
-        )
-      (begin
-        (map-set completed-challenges {user: user, challenge-id: challenge-id} true)
-        (add-tokens user (get reward-amount (unwrap-panic challenge)))
-        (ok true)
-      )
-      (ok false)
-    )
-  )
-)
-
 ;; =========================================
 ;; Read-Only Functions
 ;; =========================================
@@ -264,99 +218,6 @@
 ;; =========================================
 ;; Public Functions
 ;; =========================================
-
-;; Record and reward a verified sustainable action
-(define-public (record-action 
-    (action-id (string-ascii 36)) 
-    (action-type uint) 
-    (verification-level uint)
-  )
-  (let (
-    (user tx-sender)
-    (existing-action (map-get? verified-actions {user: user, action-id: action-id}))
-    (reward-amount (calculate-reward action-type verification-level))
-    (current-count (get-action-count user action-type))
-  )
-    (asserts! (is-none existing-action) ERR-ACTION-ALREADY-VERIFIED)
-    (asserts! (or 
-                (is-eq action-type ACTION-PUBLIC-TRANSPORT)
-                (is-eq action-type ACTION-RENEWABLE-ENERGY)
-                (is-eq action-type ACTION-REDUCE-WASTE)
-                (is-eq action-type ACTION-PLANT-TREE)
-                (is-eq action-type ACTION-SUSTAINABLE-DIET)
-              ) ERR-INVALID-ACTION)
-    
-    ;; Record the action
-    (map-set verified-actions {user: user, action-id: action-id}
-      {
-        action-type: action-type,
-        verification-level: verification-level,
-        timestamp: block-height,
-        rewarded: true,
-        reward-amount: reward-amount
-      }
-    )
-    
-    ;; Update action count
-    (map-set user-action-counts 
-      {user: user, action-type: action-type} 
-      (+ current-count u1)
-    )
-    
-    ;; Add tokens to user balance
-    (add-tokens user reward-amount)
-    
-    ;; Check for badges
-    (check-and-award-badges user)
-    
-    ;; Update challenge progress
-    (update-challenge-progress user action-type)
-    
-    (ok reward-amount)
-  )
-)
-
-;; Verify an action (by authorized verifiers)
-(define-public (verify-action 
-    (user principal) 
-    (action-id (string-ascii 36)) 
-    (verification-level uint)
-  )
-  (let (
-    (action (map-get? verified-actions {user: user, action-id: action-id}))
-    (old-reward (if (is-some action) 
-                   (get reward-amount (unwrap-panic action)) 
-                   u0))
-    (old-verification (if (is-some action) 
-                        (get verification-level (unwrap-panic action)) 
-                        u0))
-    (action-type (if (is-some action) 
-                   (get action-type (unwrap-panic action)) 
-                   u0))
-    (new-reward (calculate-reward action-type verification-level))
-  )
-    ;; Only owner can upgrade verification for now
-    ;; In a real implementation, this would check against a list of authorized verifiers
-    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
-    (asserts! (is-some action) ERR-USER-NOT-FOUND)
-    (asserts! (> verification-level old-verification) ERR-INVALID-ACTION)
-    
-    ;; Only add the difference in tokens
-    (add-tokens user (- new-reward old-reward))
-    
-    ;; Update the action record
-    (map-set verified-actions {user: user, action-id: action-id}
-      (merge (unwrap-panic action) 
-        {
-          verification-level: verification-level,
-          reward-amount: new-reward
-        }
-      )
-    )
-    
-    (ok new-reward)
-  )
-)
 
 ;; Create a new challenge
 (define-public (create-challenge 
@@ -485,24 +346,5 @@
       
       (ok token-cost)
     )
-  )
-)
-
-;; Transfer tokens to another user
-(define-public (transfer-tokens (recipient principal) (amount uint))
-  (let (
-    (sender tx-sender)
-    (sender-balance (get-balance sender))
-  )
-    (asserts! (>= sender-balance amount) ERR-INSUFFICIENT-TOKENS)
-    (asserts! (> amount u0) ERR-INVALID-AMOUNT)
-    
-    ;; Subtract from sender
-    (map-set user-balances sender (- sender-balance amount))
-    
-    ;; Add to recipient
-    (add-tokens recipient amount)
-    
-    (ok true)
   )
 )

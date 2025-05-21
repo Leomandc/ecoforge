@@ -133,37 +133,53 @@
 
 ;; Get carbon factor for a given activity type and subtype
 (define-private (get-carbon-factor (activity-type uint) (activity-subtype uint))
-  (cond
-    ;; Transport factors
-    (and (is-eq activity-type ACTIVITY-TRANSPORT) (is-eq activity-subtype TRANSPORT-CAR)) CARBON-TRANSPORT-CAR
-    (and (is-eq activity-type ACTIVITY-TRANSPORT) (is-eq activity-subtype TRANSPORT-BUS)) CARBON-TRANSPORT-BUS
-    (and (is-eq activity-type ACTIVITY-TRANSPORT) (is-eq activity-subtype TRANSPORT-TRAIN)) CARBON-TRANSPORT-TRAIN
-    (and (is-eq activity-type ACTIVITY-TRANSPORT) (is-eq activity-subtype TRANSPORT-PLANE)) CARBON-TRANSPORT-PLANE
-    (and (is-eq activity-type ACTIVITY-TRANSPORT) (is-eq activity-subtype TRANSPORT-BIKE)) CARBON-TRANSPORT-BIKE
-    (and (is-eq activity-type ACTIVITY-TRANSPORT) (is-eq activity-subtype TRANSPORT-WALK)) CARBON-TRANSPORT-WALK
-    
-    ;; Energy factors
-    (and (is-eq activity-type ACTIVITY-ENERGY) (is-eq activity-subtype ENERGY-ELECTRICITY)) CARBON-ENERGY-ELECTRICITY
-    (and (is-eq activity-type ACTIVITY-ENERGY) (is-eq activity-subtype ENERGY-GAS)) CARBON-ENERGY-GAS
-    (and (is-eq activity-type ACTIVITY-ENERGY) (is-eq activity-subtype ENERGY-HEATING-OIL)) CARBON-ENERGY-HEATING-OIL
-    (and (is-eq activity-type ACTIVITY-ENERGY) (is-eq activity-subtype ENERGY-RENEWABLE)) CARBON-ENERGY-RENEWABLE
-    
-    ;; Diet factors
-    (and (is-eq activity-type ACTIVITY-DIET) (is-eq activity-subtype DIET-MEAT-BEEF)) CARBON-DIET-MEAT-BEEF
-    (and (is-eq activity-type ACTIVITY-DIET) (is-eq activity-subtype DIET-MEAT-OTHER)) CARBON-DIET-MEAT-OTHER
-    (and (is-eq activity-type ACTIVITY-DIET) (is-eq activity-subtype DIET-FISH)) CARBON-DIET-FISH
-    (and (is-eq activity-type ACTIVITY-DIET) (is-eq activity-subtype DIET-VEGETARIAN)) CARBON-DIET-VEGETARIAN
-    (and (is-eq activity-type ACTIVITY-DIET) (is-eq activity-subtype DIET-VEGAN)) CARBON-DIET-VEGAN
-    
-    ;; Consumption factors
-    (and (is-eq activity-type ACTIVITY-CONSUMPTION) (is-eq activity-subtype CONSUMPTION-CLOTHES)) CARBON-CONSUMPTION-CLOTHES
-    (and (is-eq activity-type ACTIVITY-CONSUMPTION) (is-eq activity-subtype CONSUMPTION-ELECTRONICS)) CARBON-CONSUMPTION-ELECTRONICS
-    (and (is-eq activity-type ACTIVITY-CONSUMPTION) (is-eq activity-subtype CONSUMPTION-HOUSEHOLD)) CARBON-CONSUMPTION-HOUSEHOLD
-    (and (is-eq activity-type ACTIVITY-CONSUMPTION) (is-eq activity-subtype CONSUMPTION-RECYCLED)) CARBON-CONSUMPTION-RECYCLED
-    
-    ;; Default
-    u0
-  )
+  (if (is-eq activity-type ACTIVITY-TRANSPORT)
+    (if (is-eq activity-subtype TRANSPORT-CAR) 
+      CARBON-TRANSPORT-CAR
+      (if (is-eq activity-subtype TRANSPORT-BUS) 
+        CARBON-TRANSPORT-BUS
+        (if (is-eq activity-subtype TRANSPORT-TRAIN) 
+          CARBON-TRANSPORT-TRAIN
+          (if (is-eq activity-subtype TRANSPORT-PLANE) 
+            CARBON-TRANSPORT-PLANE
+            (if (is-eq activity-subtype TRANSPORT-BIKE) 
+              CARBON-TRANSPORT-BIKE
+              (if (is-eq activity-subtype TRANSPORT-WALK) 
+                CARBON-TRANSPORT-WALK
+                u0))))))
+    (if (is-eq activity-type ACTIVITY-ENERGY)
+      (if (is-eq activity-subtype ENERGY-ELECTRICITY) 
+        CARBON-ENERGY-ELECTRICITY
+        (if (is-eq activity-subtype ENERGY-GAS) 
+          CARBON-ENERGY-GAS
+          (if (is-eq activity-subtype ENERGY-HEATING-OIL) 
+            CARBON-ENERGY-HEATING-OIL
+            (if (is-eq activity-subtype ENERGY-RENEWABLE) 
+              CARBON-ENERGY-RENEWABLE
+              u0))))
+      (if (is-eq activity-type ACTIVITY-DIET)
+        (if (is-eq activity-subtype DIET-MEAT-BEEF) 
+          CARBON-DIET-MEAT-BEEF
+          (if (is-eq activity-subtype DIET-MEAT-OTHER) 
+            CARBON-DIET-MEAT-OTHER
+            (if (is-eq activity-subtype DIET-FISH) 
+              CARBON-DIET-FISH
+              (if (is-eq activity-subtype DIET-VEGETARIAN) 
+                CARBON-DIET-VEGETARIAN
+                (if (is-eq activity-subtype DIET-VEGAN) 
+                  CARBON-DIET-VEGAN
+                  u0)))))
+        (if (is-eq activity-type ACTIVITY-CONSUMPTION)
+          (if (is-eq activity-subtype CONSUMPTION-CLOTHES) 
+            CARBON-CONSUMPTION-CLOTHES
+            (if (is-eq activity-subtype CONSUMPTION-ELECTRONICS) 
+              CARBON-CONSUMPTION-ELECTRONICS
+              (if (is-eq activity-subtype CONSUMPTION-HOUSEHOLD) 
+                CARBON-CONSUMPTION-HOUSEHOLD
+                (if (is-eq activity-subtype CONSUMPTION-RECYCLED) 
+                  CARBON-CONSUMPTION-RECYCLED
+                  u0))))
+          u0))))
 )
 
 ;; Calculate carbon value based on activity type, subtype and amount
@@ -191,29 +207,6 @@
       { total-emissions: (+ (get total-emissions current-total) emission-value) }
     )
   )
-)
-
-;; Update monthly emissions for a user
-(define-private (update-monthly-emissions (user principal) (emission-value uint))
-  (let (
-    (current-time-ms (unwrap-panic (get-current-time-ms)))
-    (current-time (/ current-time-ms u1000))
-    (year (/ current-time u31536000))
-    (month (/ (mod current-time u31536000) u2592000))
-  )
-    (let ((current-monthly (default-to { total: u0 } 
-                           (map-get? monthly-emissions { user: user, year: year, month: month }))))
-      (map-set monthly-emissions
-        { user: user, year: year, month: month }
-        { total: (+ (get total current-monthly) emission-value) }
-      )
-    )
-  )
-)
-
-;; Get the current time in milliseconds
-(define-private (get-current-time-ms)
-  (ok (* (unwrap-panic block-height) u600000)) ;; Approximating block time as 10 minutes
 )
 
 ;; Check if activity type and subtype are valid
@@ -271,7 +264,10 @@
             (needed-reduction (- base-emissions target-emissions))
           )
             (if (> needed-reduction u0)
-              (ok (min u100 (/ (* reduction u100) needed-reduction)))
+              (let ((progress-percent (/ (* reduction u100) needed-reduction)))
+                (if (> progress-percent u100)
+                  (ok u100)
+                  (ok progress-percent)))
               (ok u100)
             )
           )
@@ -289,13 +285,15 @@
                                     (map-get? user-carbon-totals { user: user }))))
     (annual-co2-kg (/ user-total u1000))
     (comparison-value
-      (cond
-        (is-eq region u1) NORTH-AMERICA-AVG-CARBON-FOOTPRINT
-        (is-eq region u2) EUROPE-AVG-CARBON-FOOTPRINT
-        (is-eq region u3) ASIA-AVG-CARBON-FOOTPRINT
-        (is-eq region u4) AFRICA-AVG-CARBON-FOOTPRINT
-        GLOBAL-AVG-CARBON-FOOTPRINT
-      )
+      (if (is-eq region u1) 
+        NORTH-AMERICA-AVG-CARBON-FOOTPRINT
+        (if (is-eq region u2) 
+          EUROPE-AVG-CARBON-FOOTPRINT
+          (if (is-eq region u3) 
+            ASIA-AVG-CARBON-FOOTPRINT
+            (if (is-eq region u4) 
+              AFRICA-AVG-CARBON-FOOTPRINT
+              GLOBAL-AVG-CARBON-FOOTPRINT))))
     )
   )
     (ok { 
@@ -311,96 +309,6 @@
 ;; =========================================
 ;; Public Functions
 ;; =========================================
-
-;; Log a new carbon-producing activity
-(define-public (log-activity (activity-type uint) (activity-subtype uint) (amount uint))
-  (let (
-    (user tx-sender)
-    (activity-id (get-next-activity-id user))
-    (current-time-ms (unwrap-panic (get-current-time-ms)))
-  )
-    ;; Validate inputs
-    (asserts! (is-valid-activity activity-type activity-subtype) ERR-INVALID-ACTIVITY)
-    (asserts! (> amount u0) ERR-INVALID-AMOUNT)
-    
-    ;; Calculate carbon impact
-    (let ((carbon-value (calculate-carbon-value activity-type activity-subtype amount)))
-      ;; Record the activity
-      (map-set activity-records
-        { user: user, timestamp: current-time-ms, activity-id: activity-id }
-        { 
-          activity-type: activity-type,
-          activity-subtype: activity-subtype,
-          amount: amount,
-          carbon-value: carbon-value
-        }
-      )
-      
-      ;; Update user's total carbon emissions
-      (update-user-carbon-total user carbon-value)
-      
-      ;; Update monthly emissions
-      (update-monthly-emissions user carbon-value)
-      
-      (ok { activity-id: activity-id, carbon-value: carbon-value })
-    )
-  )
-)
-
-;; Set a carbon reduction goal
-(define-public (set-carbon-reduction-goal (target-emissions uint) (target-date uint))
-  (let (
-    (user tx-sender)
-    (current-time-ms (unwrap-panic (get-current-time-ms)))
-    (current-emissions (get total-emissions (default-to { total-emissions: u0 } 
-                                          (map-get? user-carbon-totals { user: user }))))
-  )
-    ;; Validate inputs
-    (asserts! (> target-date (/ current-time-ms u1000)) ERR-INVALID-PARAMS)
-    (asserts! (< target-emissions current-emissions) ERR-INVALID-PARAMS)
-    (asserts! (is-none (map-get? user-goals { user: user })) ERR-GOAL-ALREADY-SET)
-    
-    ;; Set the goal
-    (map-set user-goals
-      { user: user }
-      { 
-        target-emissions: target-emissions,
-        target-date: target-date,
-        created-at: (/ current-time-ms u1000),
-        base-emissions: current-emissions
-      }
-    )
-    
-    (ok true)
-  )
-)
-
-;; Update an existing carbon reduction goal
-(define-public (update-carbon-goal (target-emissions uint) (target-date uint))
-  (let (
-    (user tx-sender)
-    (current-time-ms (unwrap-panic (get-current-time-ms)))
-    (current-goal (map-get? user-goals { user: user }))
-  )
-    ;; Validate inputs
-    (asserts! (> target-date (/ current-time-ms u1000)) ERR-INVALID-PARAMS)
-    (asserts! (is-some current-goal) ERR-NO-GOAL-EXISTS)
-    
-    (let ((unwrapped-goal (unwrap-panic current-goal)))
-      (map-set user-goals
-        { user: user }
-        { 
-          target-emissions: target-emissions,
-          target-date: target-date,
-          created-at: (get created-at unwrapped-goal),
-          base-emissions: (get base-emissions unwrapped-goal)
-        }
-      )
-      
-      (ok true)
-    )
-  )
-)
 
 ;; Delete a user's carbon reduction goal
 (define-public (delete-carbon-goal)
